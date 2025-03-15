@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "<YOUR_PROJECT_NAME>"
+version = "0.1.0"
+description = "<YOUR_PROJECT_DESCRIPTION>"
+readme = "README.md"
+authors = [
+    {name = "<YOUR_NAME>", email = "<YOUR_EMAIL>"},
+]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.9"
+dependencies = [
+    # 必要なパッケージを追加
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.10.0",
+    "mypy>=1.0.0",
+    "ruff>=0.0.100",
+    "pre-commit>=3.3.1",
+]
+docs = [
+    "sphinx>=5.0.0",
+    "sphinx-rtd-theme>=1.0.0",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py39"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "--cov=<YOUR_PACKAGE_NAME>"
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+select = ["E", "F", "B", "I"]
+ignore = []
