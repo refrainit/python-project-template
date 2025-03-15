@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from github import Github
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # GitHubに接続
 g = Github(os.environ["GITHUB_TOKEN"])
@@ -29,11 +29,11 @@ for issue in issues:
     
     # 優先度を特定（ボディからパースする必要あり）
     priority = "未設定"
-    if "高" in issue.body or "緊急" in issue.body:
+    if issue.body and ("高" in issue.body or "緊急" in issue.body):
         priority = "高"
-    elif "中" in issue.body:
+    elif issue.body and "中" in issue.body:
         priority = "中"
-    elif "低" in issue.body:
+    elif issue.body and "低" in issue.body:
         priority = "低"
     
     # データリストに追加
@@ -42,8 +42,8 @@ for issue in issues:
         "タイトル": issue.title,
         "種別": issue_type,
         "優先度": priority,
-        "作成日": issue.created_at,
-        "更新日": issue.updated_at,
+        "作成日": issue.created_at.replace(tzinfo=None),  # タイムゾーン情報を削除
+        "更新日": issue.updated_at.replace(tzinfo=None),  # タイムゾーン情報を削除
         "担当者": issue.assignee.login if issue.assignee else "未割り当て",
     })
 
@@ -56,42 +56,89 @@ type_counts = df["種別"].value_counts()
 # 優先度ごとの集計
 priority_counts = df["優先度"].value_counts()
 
+# 現在時刻（タイムゾーンなし）
+now = datetime.now()
+
 # マークダウンレポートの作成
 report = f"""# Issue集計レポート
-生成日時: {datetime.now().strftime("%Y/%m/%d %H:%M")}
+生成日時: {now.strftime("%Y/%m/%d %H:%M")}
 
 ## 1. 全体概要
 - 未解決Issue数: {len(df)}件
-- 平均未解決日数: {(datetime.now() - df["作成日"].mean()).days:.1f}日
+"""
 
+# データフレームが空でない場合のみ平均未解決日数を計算
+if not df.empty:
+    avg_days = (now - df["作成日"].mean()).days
+    report += f"- 平均未解決日数: {avg_days:.1f}日\n"
+else:
+    report += "- 平均未解決日数: データなし\n"
+
+report += f"""
 ## 2. 種別ごとの集計
-{type_counts.to_markdown()}
+{type_counts.to_markdown() if not type_counts.empty else "データなし"}
 
 ## 3. 優先度ごとの集計
-{priority_counts.to_markdown()}
+{priority_counts.to_markdown() if not priority_counts.empty else "データなし"}
+"""
 
+# 直近のアクティビティ（1週間以内の更新）
+if not df.empty:
+    recent_updates = len(df[df["更新日"] > now - timedelta(days=7)])
+    report += f"""
 ## 4. 直近のアクティビティ
-直近1週間で更新されたIssue: {len(df[df["更新日"] > datetime.now() - timedelta(days=7)])}件
+直近1週間で更新されたIssue: {recent_updates}件
+"""
+else:
+    report += """
+## 4. 直近のアクティビティ
+直近1週間で更新されたIssue: 0件
+"""
 
+# 最も長く未解決のIssue
+if len(df) >= 5:
+    oldest_issues = df.sort_values("作成日").head(5)
+    report += f"""
 ## 5. 最も長く未解決のIssue（トップ5）
-{df.sort_values("作成日").head(5)[["番号", "タイトル", "種別", "優先度", "作成日"]].to_markdown(index=False)}
+{oldest_issues[["番号", "タイトル", "種別", "優先度", "作成日"]].to_markdown(index=False)}
+"""
+elif not df.empty:
+    oldest_issues = df.sort_values("作成日")
+    report += f"""
+## 5. 未解決のIssue
+{oldest_issues[["番号", "タイトル", "種別", "優先度", "作成日"]].to_markdown(index=False)}
+"""
+else:
+    report += """
+## 5. 最も長く未解決のIssue
+未解決のIssueはありません
 """
 
 # レポートをファイルに保存
 with open("issue-report.md", "w", encoding="utf-8") as f:
     f.write(report)
 
-# グラフの生成
-plt.figure(figsize=(12, 5))
+# グラフの生成（データがある場合のみ）
+if not df.empty:
+    plt.figure(figsize=(12, 5))
 
-plt.subplot(1, 2, 1)
-type_counts.plot.bar()
-plt.title("種別ごとのIssue数")
-plt.tight_layout()
+    # 種別ごとのIssue数
+    if not type_counts.empty:
+        plt.subplot(1, 2, 1)
+        type_counts.plot.bar()
+        plt.title("種別ごとのIssue数")
+        plt.tight_layout()
+    
+    # 優先度ごとのIssue数
+    if not priority_counts.empty:
+        plt.subplot(1, 2, 2)
+        priority_counts.plot.bar()
+        plt.title("優先度ごとのIssue数")
+        plt.tight_layout()
+    
+    plt.savefig("issue-stats.png")
+    print("グラフを生成しました: issue-stats.png")
+else:
+    print("グラフを生成するデータがありません")
 
-plt.subplot(1, 2, 2)
-priority_counts.plot.bar()
-plt.title("優先度ごとのIssue数")
-plt.tight_layout()
-
-plt.savefig("issue-stats.png")
+print("レポートを生成しました: issue-report.md")

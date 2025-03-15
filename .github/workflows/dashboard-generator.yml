@@ -5,6 +5,12 @@ on:
     - cron: '0 */6 * * *'  # 6時間ごとに更新
   workflow_dispatch:        # 手動実行
 
+# GitHub Pagesへのデプロイに必要な権限を追加
+permissions:
+  contents: write          # リポジトリのコンテンツに書き込み権限を付与
+  pages: write             # GitHub Pagesに書き込み権限を付与
+  id-token: write          # IDトークンに書き込み権限を付与
+
 jobs:
   build:
     runs-on: ubuntu-latest
