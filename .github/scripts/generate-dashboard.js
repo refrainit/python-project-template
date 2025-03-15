@@ -2,266 +2,266 @@
  * Issue追跡ダッシュボード生成スクリプト
  * GitHubのIssue情報を集計し、HTMLダッシュボードを生成します。
  */
-const { Octokit } = require('@octokit/rest');
-const fs = require('fs');
-const path = require('path');
-const { createCanvas } = require('canvas');
-const Chart = require('chart.js/auto');
-
-// GitHubとの接続設定
-const octokit = new Octokit({
-  auth: process.env.GITHUB_TOKEN
-});
-
-// リポジトリ情報
-const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
-
-// ディレクトリの準備
-const outputDir = path.join(process.cwd(), 'dashboard');
-const imgDir = path.join(outputDir, 'img');
-
-if (!fs.existsSync(outputDir)) {
-  fs.mkdirSync(outputDir, { recursive: true });
-}
-
-if (!fs.existsSync(imgDir)) {
-  fs.mkdirSync(imgDir, { recursive: true });
+// ESMモジュールをダイナミックインポートするための関数
+async function importESM() {
+  const { Octokit } = await import('@octokit/rest');
+  const fs = await import('fs/promises');
+  const path = await import('path');
+  const { createCanvas } = await import('canvas');
+  const { Chart } = await import('chart.js/auto');
+  
+  return { Octokit, fs, path, createCanvas, Chart };
 }
 
 /**
- * Issueデータを取得
+ * メイン実行関数
  */
-async function getIssuesData() {
-  console.log('Issueデータを取得中...');
-  
-  // すべてのIssueを取得（オープンとクローズ）
-  const issues = [];
-  let page = 1;
-  let hasMore = true;
-  
-  while (hasMore) {
-    const response = await octokit.issues.listForRepo({
-      owner,
-      repo,
-      state: 'all',
-      per_page: 100,
-      page: page
+async function main() {
+  try {
+    // ESMモジュールをインポート
+    const { Octokit, fs, path, createCanvas, Chart } = await importESM();
+    
+    // GitHubとの接続設定
+    const octokit = new Octokit({
+      auth: process.env.GITHUB_TOKEN
+    });
+
+    // リポジトリ情報
+    const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+
+    console.log(`リポジトリ: ${owner}/${repo}`);
+
+    // ディレクトリの準備
+    const outputDir = 'dashboard';
+    const imgDir = `${outputDir}/img`;
+
+    try {
+      await fs.mkdir(outputDir, { recursive: true });
+      await fs.mkdir(imgDir, { recursive: true });
+    } catch (err) {
+      console.error('ディレクトリの作成エラー:', err);
+    }
+
+    console.log('Issueデータを取得中...');
+    
+    // すべてのIssueを取得（オープンとクローズ）
+    const issues = [];
+    let page = 1;
+    let hasMore = true;
+    
+    while (hasMore) {
+      const response = await octokit.issues.listForRepo({
+        owner,
+        repo,
+        state: 'all',
+        per_page: 100,
+        page: page
+      });
+      
+      if (response.data.length === 0) {
+        hasMore = false;
+      } else {
+        // PRを除外
+        const filteredIssues = response.data.filter(issue => !issue.pull_request);
+        issues.push(...filteredIssues);
+        page++;
+      }
+    }
+    
+    console.log(`${issues.length} 件のIssueを取得しました`);
+    
+    // データ加工
+    const processedIssues = issues.map(issue => {
+      const labels = issue.labels.map(label => label.name);
+      
+      // Issue種別の特定
+      let issueType = 'その他';
+      if (labels.includes('bug')) {
+        issueType = 'バグ';
+      } else if (labels.includes('enhancement')) {
+        issueType = '機能リクエスト';
+      } else if (labels.includes('task')) {
+        issueType = 'タスク';
+      }
+      
+      // 優先度の特定
+      let priority = '未設定';
+      if (labels.some(l => ['高', '緊急', 'high', 'critical'].includes(l))) {
+        priority = '高';
+      } else if (labels.some(l => ['中', 'medium'].includes(l))) {
+        priority = '中';
+      } else if (labels.some(l => ['低', 'low'].includes(l))) {
+        priority = '低';
+      }
+      
+      return {
+        number: issue.number,
+        title: issue.title,
+        type: issueType,
+        priority: priority,
+        state: issue.state === 'open' ? 'オープン' : 'クローズ',
+        createdAt: new Date(issue.created_at),
+        updatedAt: new Date(issue.updated_at),
+        closedAt: issue.closed_at ? new Date(issue.closed_at) : null,
+        assignee: issue.assignee ? issue.assignee.login : '未割り当て',
+        url: issue.html_url
+      };
+    });
+
+    console.log('グラフを生成中...');
+    
+    // 種別ごとの集計
+    const typeCount = {};
+    processedIssues.forEach(issue => {
+      typeCount[issue.type] = (typeCount[issue.type] || 0) + 1;
     });
     
-    if (response.data.length === 0) {
-      hasMore = false;
-    } else {
-      // PRを除外
-      const filteredIssues = response.data.filter(issue => !issue.pull_request);
-      issues.push(...filteredIssues);
-      page++;
-    }
-  }
-  
-  console.log(`${issues.length} 件のIssueを取得しました`);
-  
-  // データ加工
-  return issues.map(issue => {
-    const labels = issue.labels.map(label => label.name);
+    // 優先度ごとの集計
+    const priorityCount = {};
+    processedIssues.forEach(issue => {
+      priorityCount[issue.priority] = (priorityCount[issue.priority] || 0) + 1;
+    });
     
-    // Issue種別の特定
-    let issueType = 'その他';
-    if (labels.includes('bug')) {
-      issueType = 'バグ';
-    } else if (labels.includes('enhancement')) {
-      issueType = '機能リクエスト';
-    } else if (labels.includes('task')) {
-      issueType = 'タスク';
-    }
+    // 状態ごとの集計
+    const stateCount = {};
+    processedIssues.forEach(issue => {
+      stateCount[issue.state] = (stateCount[issue.state] || 0) + 1;
+    });
     
-    // 優先度の特定
-    let priority = '未設定';
-    if (labels.some(l => ['高', '緊急', 'high', 'critical'].includes(l))) {
-      priority = '高';
-    } else if (labels.some(l => ['中', 'medium'].includes(l))) {
-      priority = '中';
-    } else if (labels.some(l => ['低', 'low'].includes(l))) {
-      priority = '低';
-    }
+    // 月ごとの集計
+    const monthlyCount = {};
+    processedIssues.forEach(issue => {
+      const month = `${issue.createdAt.getFullYear()}-${(issue.createdAt.getMonth() + 1).toString().padStart(2, '0')}`;
+      monthlyCount[month] = (monthlyCount[month] || 0) + 1;
+    });
     
-    return {
-      number: issue.number,
-      title: issue.title,
-      type: issueType,
-      priority: priority,
-      state: issue.state === 'open' ? 'オープン' : 'クローズ',
-      createdAt: new Date(issue.created_at),
-      updatedAt: new Date(issue.updated_at),
-      closedAt: issue.closed_at ? new Date(issue.closed_at) : null,
-      assignee: issue.assignee ? issue.assignee.login : '未割り当て',
-      url: issue.html_url
+    // Issue統計グラフ
+    const width = 800;
+    const height = 600;
+    const canvas = createCanvas(width, height);
+    const context = canvas.getContext('2d');
+    
+    // グラフ生成
+    new Chart(context, {
+      type: 'bar',
+      data: {
+        labels: Object.keys(typeCount),
+        datasets: [{
+          label: '種別ごとのIssue数',
+          data: Object.values(typeCount),
+          backgroundColor: 'rgba(54, 162, 235, 0.5)',
+          borderColor: 'rgba(54, 162, 235, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        plugins: {
+          title: {
+            display: true,
+            text: '種別ごとのIssue数'
+          }
+        }
+      }
+    });
+    
+    // グラフ保存
+    const buffer = canvas.toBuffer('image/png');
+    await fs.writeFile(`${imgDir}/issue_stats.png`, buffer);
+    
+    // 状態グラフ（円グラフ）
+    const stateCanvas = createCanvas(400, 400);
+    const stateContext = stateCanvas.getContext('2d');
+    
+    new Chart(stateContext, {
+      type: 'pie',
+      data: {
+        labels: Object.keys(stateCount),
+        datasets: [{
+          data: Object.values(stateCount),
+          backgroundColor: [
+            'rgba(54, 162, 235, 0.5)',
+            'rgba(255, 99, 132, 0.5)'
+          ],
+          borderColor: [
+            'rgba(54, 162, 235, 1)',
+            'rgba(255, 99, 132, 1)'
+          ],
+          borderWidth: 1
+        }]
+      },
+      options: {
+        plugins: {
+          title: {
+            display: true,
+            text: 'Issue状態の分布'
+          }
+        }
+      }
+    });
+    
+    // 円グラフ保存
+    const stateBuffer = stateCanvas.toBuffer('image/png');
+    await fs.writeFile(`${imgDir}/issue_state.png`, stateBuffer);
+    
+    // 月別グラフ
+    const monthlyCanvas = createCanvas(800, 400);
+    const monthlyContext = monthlyCanvas.getContext('2d');
+    
+    const sortedMonths = Object.keys(monthlyCount).sort();
+    
+    new Chart(monthlyContext, {
+      type: 'bar',
+      data: {
+        labels: sortedMonths,
+        datasets: [{
+          label: '月ごとのIssue作成数',
+          data: sortedMonths.map(month => monthlyCount[month]),
+          backgroundColor: 'rgba(75, 192, 192, 0.5)',
+          borderColor: 'rgba(75, 192, 192, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        plugins: {
+          title: {
+            display: true,
+            text: '月ごとのIssue作成数'
+          }
+        }
+      }
+    });
+    
+    // 月別グラフ保存
+    const monthlyBuffer = monthlyCanvas.toBuffer('image/png');
+    await fs.writeFile(`${imgDir}/monthly_issues.png`, monthlyBuffer);
+    
+    const stats = {
+      typeCount,
+      priorityCount,
+      stateCount,
+      monthlyCount
     };
-  });
-}
 
-/**
- * グラフを生成
- */
-async function generateCharts(issues) {
-  console.log('グラフを生成中...');
-  
-  // 種別ごとの集計
-  const typeCount = {};
-  issues.forEach(issue => {
-    typeCount[issue.type] = (typeCount[issue.type] || 0) + 1;
-  });
-  
-  // 優先度ごとの集計
-  const priorityCount = {};
-  issues.forEach(issue => {
-    priorityCount[issue.priority] = (priorityCount[issue.priority] || 0) + 1;
-  });
-  
-  // 状態ごとの集計
-  const stateCount = {};
-  issues.forEach(issue => {
-    stateCount[issue.state] = (stateCount[issue.state] || 0) + 1;
-  });
-  
-  // 月ごとの集計
-  const monthlyCount = {};
-  issues.forEach(issue => {
-    const month = `${issue.createdAt.getFullYear()}-${(issue.createdAt.getMonth() + 1).toString().padStart(2, '0')}`;
-    monthlyCount[month] = (monthlyCount[month] || 0) + 1;
-  });
-  
-  // Issue統計グラフ
-  const width = 800;
-  const height = 600;
-  const canvas = createCanvas(width, height);
-  const context = canvas.getContext('2d');
-  
-  // グラフ生成
-  new Chart(context, {
-    type: 'bar',
-    data: {
-      labels: Object.keys(typeCount),
-      datasets: [{
-        label: '種別ごとのIssue数',
-        data: Object.values(typeCount),
-        backgroundColor: 'rgba(54, 162, 235, 0.5)',
-        borderColor: 'rgba(54, 162, 235, 1)',
-        borderWidth: 1
-      }]
-    },
-    options: {
-      plugins: {
-        title: {
-          display: true,
-          text: '種別ごとのIssue数'
-        }
-      }
-    }
-  });
-  
-  // グラフ保存
-  const buffer = canvas.toBuffer('image/png');
-  fs.writeFileSync(path.join(imgDir, 'issue_stats.png'), buffer);
-  
-  // 状態グラフ（円グラフ）
-  const stateCanvas = createCanvas(400, 400);
-  const stateContext = stateCanvas.getContext('2d');
-  
-  new Chart(stateContext, {
-    type: 'pie',
-    data: {
-      labels: Object.keys(stateCount),
-      datasets: [{
-        data: Object.values(stateCount),
-        backgroundColor: [
-          'rgba(54, 162, 235, 0.5)',
-          'rgba(255, 99, 132, 0.5)'
-        ],
-        borderColor: [
-          'rgba(54, 162, 235, 1)',
-          'rgba(255, 99, 132, 1)'
-        ],
-        borderWidth: 1
-      }]
-    },
-    options: {
-      plugins: {
-        title: {
-          display: true,
-          text: 'Issue状態の分布'
-        }
-      }
-    }
-  });
-  
-  // 円グラフ保存
-  const stateBuffer = stateCanvas.toBuffer('image/png');
-  fs.writeFileSync(path.join(imgDir, 'issue_state.png'), stateBuffer);
-  
-  // 月別グラフ
-  const monthlyCanvas = createCanvas(800, 400);
-  const monthlyContext = monthlyCanvas.getContext('2d');
-  
-  const sortedMonths = Object.keys(monthlyCount).sort();
-  
-  new Chart(monthlyContext, {
-    type: 'bar',
-    data: {
-      labels: sortedMonths,
-      datasets: [{
-        label: '月ごとのIssue作成数',
-        data: sortedMonths.map(month => monthlyCount[month]),
-        backgroundColor: 'rgba(75, 192, 192, 0.5)',
-        borderColor: 'rgba(75, 192, 192, 1)',
-        borderWidth: 1
-      }]
-    },
-    options: {
-      plugins: {
-        title: {
-          display: true,
-          text: '月ごとのIssue作成数'
-        }
-      }
-    }
-  });
-  
-  // 月別グラフ保存
-  const monthlyBuffer = monthlyCanvas.toBuffer('image/png');
-  fs.writeFileSync(path.join(imgDir, 'monthly_issues.png'), monthlyBuffer);
-  
-  return {
-    typeCount,
-    priorityCount,
-    stateCount,
-    monthlyCount
-  };
-}
-
-/**
- * HTMLダッシュボードを生成
- */
-function generateDashboard(issues, stats) {
-  console.log('ダッシュボードを生成中...');
-  
-  const totalIssues = issues.length;
-  const openIssues = issues.filter(issue => issue.state === 'オープン').length;
-  const closedIssues = totalIssues - openIssues;
-  
-  // 最近の未解決Issue（上位5件）
-  const recentIssues = issues
-    .filter(issue => issue.state === 'オープン')
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, 5);
-  
-  // 最も長く未解決のIssue（上位5件）
-  const oldestIssues = issues
-    .filter(issue => issue.state === 'オープン')
-    .sort((a, b) => a.createdAt - b.createdAt)
-    .slice(0, 5);
-  
-  // HTMLテンプレート
-  const html = `
+    console.log('ダッシュボードを生成中...');
+    
+    const totalIssues = processedIssues.length;
+    const openIssues = processedIssues.filter(issue => issue.state === 'オープン').length;
+    const closedIssues = totalIssues - openIssues;
+    
+    // 最近の未解決Issue（上位5件）
+    const recentIssues = processedIssues
+      .filter(issue => issue.state === 'オープン')
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 5);
+    
+    // 最も長く未解決のIssue（上位5件）
+    const oldestIssues = processedIssues
+      .filter(issue => issue.state === 'オープン')
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .slice(0, 5);
+    
+    // HTMLテンプレート
+    const html = `
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -450,33 +450,24 @@ function generateDashboard(issues, stats) {
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>`;
-  
-  fs.writeFileSync(path.join(outputDir, 'index.html'), html);
-  
-  // JSONデータとしても保存
-  const summary = {
-    total_issues: totalIssues,
-    open_issues: openIssues,
-    closed_issues: closedIssues,
-    by_type: stats.typeCount,
-    by_priority: stats.priorityCount,
-    update_time: new Date().toISOString()
-  };
-  
-  fs.writeFileSync(
-    path.join(outputDir, 'summary.json'), 
-    JSON.stringify(summary, null, 2)
-  );
-}
-
-/**
- * メイン実行関数
- */
-async function main() {
-  try {
-    const issues = await getIssuesData();
-    const stats = await generateCharts(issues);
-    generateDashboard(issues, stats);
+    
+    await fs.writeFile(`${outputDir}/index.html`, html);
+    
+    // JSONデータとしても保存
+    const summary = {
+      total_issues: totalIssues,
+      open_issues: openIssues,
+      closed_issues: closedIssues,
+      by_type: stats.typeCount,
+      by_priority: stats.priorityCount,
+      update_time: new Date().toISOString()
+    };
+    
+    await fs.writeFile(
+      `${outputDir}/summary.json`, 
+      JSON.stringify(summary, null, 2)
+    );
+    
     console.log('完了！ダッシュボードは dashboard/index.html に生成されました');
   } catch (error) {
     console.error('エラーが発生しました:', error);
