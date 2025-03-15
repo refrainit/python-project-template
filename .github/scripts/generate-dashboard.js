@@ -135,19 +135,39 @@ async function importESM() {
         monthlyCount[month] = (monthlyCount[month] || 0) + 1;
       });
       
+      // グラフ用の日本語→英語変換マッピング
+      const typeMapping = {
+        'バグ': 'Bug',
+        '機能リクエスト': 'Feature Request',
+        'タスク': 'Task',
+        'その他': 'Other'
+      };
+      
+      const priorityMapping = {
+        '高': 'High',
+        '中': 'Medium',
+        '低': 'Low',
+        '未設定': 'Not Set'
+      };
+      
+      const stateMapping = {
+        'オープン': 'Open',
+        'クローズ': 'Closed'
+      };
+      
       // Issue統計グラフ
       const width = 800;
       const height = 600;
       const canvas = createCanvas(width, height);
       const context = canvas.getContext('2d');
       
-      // グラフ生成
+      // グラフ生成 - 英語ラベル使用
       new Chart(context, {
         type: 'bar',
         data: {
-          labels: Object.keys(typeCount),
+          labels: Object.keys(typeCount).map(type => typeMapping[type] || type),
           datasets: [{
-            label: '種別ごとのIssue数',
+            label: 'Issues by Type',
             data: Object.values(typeCount),
             backgroundColor: 'rgba(54, 162, 235, 0.5)',
             borderColor: 'rgba(54, 162, 235, 1)',
@@ -158,7 +178,7 @@ async function importESM() {
           plugins: {
             title: {
               display: true,
-              text: '種別ごとのIssue数'
+              text: 'Issues by Type'
             }
           }
         }
@@ -168,14 +188,14 @@ async function importESM() {
       const buffer = canvas.toBuffer('image/png');
       await fs.writeFile(`${imgDir}/issue_stats.png`, buffer);
       
-      // 状態グラフ（円グラフ）
+      // 状態グラフ（円グラフ） - 英語ラベル使用
       const stateCanvas = createCanvas(400, 400);
       const stateContext = stateCanvas.getContext('2d');
       
       new Chart(stateContext, {
         type: 'pie',
         data: {
-          labels: Object.keys(stateCount),
+          labels: Object.keys(stateCount).map(state => stateMapping[state] || state),
           datasets: [{
             data: Object.values(stateCount),
             backgroundColor: [
@@ -193,7 +213,7 @@ async function importESM() {
           plugins: {
             title: {
               display: true,
-              text: 'Issue状態の分布'
+              text: 'Issue Status Distribution'
             }
           }
         }
@@ -214,7 +234,7 @@ async function importESM() {
         data: {
           labels: sortedMonths,
           datasets: [{
-            label: '月ごとのIssue作成数',
+            label: 'Monthly Issue Creation',
             data: sortedMonths.map(month => monthlyCount[month]),
             backgroundColor: 'rgba(75, 192, 192, 0.5)',
             borderColor: 'rgba(75, 192, 192, 1)',
@@ -225,7 +245,7 @@ async function importESM() {
           plugins: {
             title: {
               display: true,
-              text: '月ごとのIssue作成数'
+              text: 'Monthly Issue Creation'
             }
           }
         }
