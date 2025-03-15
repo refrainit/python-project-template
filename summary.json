@@ -1,13 +1,14 @@
 {
-  "total_issues": 2,
-  "open_issues": 2,
+  "total_issues": 4,
+  "open_issues": 4,
   "closed_issues": 0,
   "by_type": {
-    "機能リクエスト": 1,
-    "バグ": 1
+    "バグ": 2,
+    "その他": 1,
+    "機能リクエスト": 1
   },
   "by_priority": {
-    "未設定": 2
+    "未設定": 4
   },
-  "update_time": "2025-03-15T16:04:18.109Z"
+  "update_time": "2025-03-15T18:23:01.530Z"
 }
