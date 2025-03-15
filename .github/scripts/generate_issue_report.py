@@ -4,6 +4,13 @@ import matplotlib.pyplot as plt
 from github import Github
 from datetime import datetime, timedelta, timezone
 
+# tabulateが利用可能か確認
+try:
+    import tabulate
+    HAS_TABULATE = True
+except ImportError:
+    HAS_TABULATE = False
+
 # GitHubに接続
 g = Github(os.environ["GITHUB_TOKEN"])
 repo = g.get_repo(os.environ["GITHUB_REPOSITORY"])
@@ -51,13 +58,41 @@ for issue in issues:
 df = pd.DataFrame(data)
 
 # 種別ごとの集計
-type_counts = df["種別"].value_counts()
+type_counts = df["種別"].value_counts() if not df.empty else pd.Series()
 
 # 優先度ごとの集計
-priority_counts = df["優先度"].value_counts()
+priority_counts = df["優先度"].value_counts() if not df.empty else pd.Series()
 
 # 現在時刻（タイムゾーンなし）
 now = datetime.now()
+
+# DataFrameをマークダウン形式に変換するヘルパー関数
+def df_to_markdown(dataframe):
+    if HAS_TABULATE and not dataframe.empty:
+        return dataframe.to_markdown()
+    
+    # tabulateがない場合は簡易的なマークダウンテーブルを作成
+    if dataframe.empty:
+        return "データなし"
+    
+    # インデックス名とカラム名
+    result = []
+    if isinstance(dataframe, pd.Series):
+        result.append("| インデックス | 値 |")
+        result.append("| --- | --- |")
+        for idx, value in dataframe.items():
+            result.append(f"| {idx} | {value} |")
+    else:
+        headers = "| " + " | ".join(str(col) for col in dataframe.columns) + " |"
+        separator = "| " + " | ".join(["---"] * len(dataframe.columns)) + " |"
+        result.append(headers)
+        result.append(separator)
+        
+        for _, row in dataframe.iterrows():
+            row_str = "| " + " | ".join(str(val) for val in row) + " |"
+            result.append(row_str)
+    
+    return "\n".join(result)
 
 # マークダウンレポートの作成
 report = f"""# Issue集計レポート
@@ -76,10 +111,10 @@ else:
 
 report += f"""
 ## 2. 種別ごとの集計
-{type_counts.to_markdown() if not type_counts.empty else "データなし"}
+{df_to_markdown(type_counts)}
 
 ## 3. 優先度ごとの集計
-{priority_counts.to_markdown() if not priority_counts.empty else "データなし"}
+{df_to_markdown(priority_counts)}
 """
 
 # 直近のアクティビティ（1週間以内の更新）
@@ -100,13 +135,13 @@ if len(df) >= 5:
     oldest_issues = df.sort_values("作成日").head(5)
     report += f"""
 ## 5. 最も長く未解決のIssue（トップ5）
-{oldest_issues[["番号", "タイトル", "種別", "優先度", "作成日"]].to_markdown(index=False)}
+{df_to_markdown(oldest_issues[["番号", "タイトル", "種別", "優先度", "作成日"]])}
 """
 elif not df.empty:
     oldest_issues = df.sort_values("作成日")
     report += f"""
 ## 5. 未解決のIssue
-{oldest_issues[["番号", "タイトル", "種別", "優先度", "作成日"]].to_markdown(index=False)}
+{df_to_markdown(oldest_issues[["番号", "タイトル", "種別", "優先度", "作成日"]])}
 """
 else:
     report += """

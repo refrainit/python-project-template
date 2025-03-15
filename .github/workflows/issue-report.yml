@@ -19,7 +19,7 @@ jobs:
 
       - name: Generate Issue Report
         run: |
-          pip install PyGithub pandas matplotlib
+          pip install PyGithub pandas matplotlib tabulate
           python .github/scripts/generate_issue_report.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
