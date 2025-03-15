@@ -18,10 +18,10 @@ jobs:
           node-version: '16'
 
       - name: Install dependencies
-        run: npm install @octokit/rest chart.js
+        run: npm install @octokit/rest chart.js canvas
 
-      - name: Generate dashboard data
-        run: node .github/scripts/generate-dashboard-data.js
+      - name: Generate dashboard
+        run: node .github/scripts/generate-dashboard.js
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
