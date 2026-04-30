@@ -1,14 +1,8 @@
 {
-  "total_issues": 4,
-  "open_issues": 4,
+  "total_issues": 0,
+  "open_issues": 0,
   "closed_issues": 0,
-  "by_type": {
-    "バグ": 2,
-    "その他": 1,
-    "機能リクエスト": 1
-  },
-  "by_priority": {
-    "未設定": 4
-  },
-  "update_time": "2026-04-30T08:23:01.513Z"
+  "by_type": {},
+  "by_priority": {},
+  "update_time": "2026-04-30T13:57:28.260Z"
 }
